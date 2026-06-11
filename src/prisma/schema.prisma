@@ -1,0 +1,521 @@
+generator client {
+  provider = "prisma-client-js"
+  output   = "../generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  ADMIN
+  TEACHER
+  STUDENT
+}
+
+enum TeacherStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum LessonType {
+  VIDEO
+  PDF
+  IMAGE
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  ABANDONED
+}
+
+enum LiveClassStatus {
+  SCHEDULED
+  LIVE
+  ENDED
+  CANCELLED
+}
+
+enum AnnouncementTarget {
+  ALL
+  TEACHERS
+  STUDENTS
+  ADMINS
+}
+
+model User {
+  id                String    @id @default(uuid())
+  email             String    @unique
+  password          String?
+  name              String
+  role              UserRole
+  phone             String?
+  avatar            String?
+  isVerified        Boolean   @default(false)
+  confirmationCode  String?
+  googleId          String?   @unique
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
+  lastLoginAt       DateTime?
+  isSuspended       Boolean   @default(false)
+
+  // Relations
+  teacherProfile    TeacherProfile?
+  studentProfile    StudentProfile?
+  adminActions      AdminAction[]
+  enrollments       Enrollment[]
+  submissions       Submission[]
+  testResults       TestResult[]
+  chatMessages      ChatMessage[]
+  groupMemberships  GroupMember[]
+  groupPosts        GroupPost[]
+  postComments      PostComment[]
+  notifications     Notification[]
+  announcements     Announcement[] @relation("AnnouncementCreator")
+  readAnnouncements UserAnnouncement[]
+
+  @@index([email])
+  @@index([role])
+  @@index([googleId])
+  @@map("users")
+}
+
+model TeacherProfile {
+  id              String        @id @default(uuid())
+  userId          String        @unique
+  user            User          @relation(fields: [userId], references: [id], onDelete: Cascade)
+  status          TeacherStatus @default(PENDING)
+  bio             String?       @db.Text
+  subjects        String[]
+  resumeUrl       String?
+  rejectionReason String?       @db.Text
+  yearsExperience Int           @default(0)
+  education       String?
+  createdAt       DateTime      @default(now())
+  updatedAt       DateTime      @updatedAt
+
+  courses         Course[]
+  liveClasses     LiveClass[]
+  earnings        TeacherEarning[]
+
+  @@index([userId])
+  @@index([status])
+  @@map("teacher_profiles")
+}
+
+model StudentProfile {
+  id              String   @id @default(uuid())
+  userId          String   @unique
+  user            User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gradeLevel      String?
+  interests       String[]
+  createdAt       DateTime @default(now())
+  updatedAt       DateTime @updatedAt
+
+  enrollments     Enrollment[]
+  submissions     Submission[]
+  testResults     TestResult[]
+  groupMemberships GroupMember[]
+
+  @@index([userId])
+  @@map("student_profiles")
+}
+
+model Course {
+  id           String   @id @default(uuid())
+  title        String
+  description  String   @db.Text
+  thumbnail    String?
+  category     String
+  price        Decimal  @default(0)
+  isFree       Boolean  @default(true)
+  rating       Decimal  @default(0)
+  totalReviews Int      @default(0)
+  duration     Int?      // total course hours
+  isPublished  Boolean  @default(false)
+  createdAt    DateTime @default(now())
+  updatedAt    DateTime @updatedAt
+
+  teacherId    String
+  teacher      TeacherProfile @relation(fields: [teacherId], references: [id])
+
+  modules      Module[]
+  enrollments  Enrollment[]
+  assignments  Assignment[]
+  tests        Test[]
+  liveClasses  LiveClass[]
+  reviews      Review[]
+  earnings     TeacherEarning[]
+
+  @@index([teacherId])
+  @@index([category])
+  @@index([isFree])
+  @@index([isPublished])
+  @@map("courses")
+}
+
+model Module {
+  id       String @id @default(uuid())
+  title    String
+  order    Int
+  courseId String
+  course   Course @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  lessons  Lesson[]
+
+  @@index([courseId])
+  @@map("modules")
+}
+
+model Lesson {
+  id          String     @id @default(uuid())
+  title       String
+  type        LessonType
+  url         String
+  duration    Int?       // seconds for video
+  description String?    @db.Text
+  order       Int
+  moduleId    String
+  module      Module     @relation(fields: [moduleId], references: [id], onDelete: Cascade)
+  createdAt   DateTime   @default(now())
+
+  @@index([moduleId])
+  @@map("lessons")
+}
+
+model Assignment {
+  id          String   @id @default(uuid())
+  title       String
+  description String   @db.Text
+  dueDate     DateTime
+  fileUrl     String?
+  maxScore    Int      @default(100)
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  submissions Submission[]
+
+  @@index([courseId])
+  @@map("assignments")
+}
+
+model Submission {
+  id            String    @id @default(uuid())
+  fileUrl       String?
+  textContent   String?   @db.Text
+  score         Int?
+  feedback      String?   @db.Text
+  status        String    @default("submitted") // submitted, graded, late
+  submittedAt   DateTime  @default(now())
+  gradedAt      DateTime?
+
+  assignmentId  String
+  assignment    Assignment @relation(fields: [assignmentId], references: [id], onDelete: Cascade)
+  studentId     String
+  student       User       @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@index([assignmentId])
+  @@index([studentId])
+  @@map("submissions")
+}
+
+model Test {
+  id          String   @id @default(uuid())
+  title       String
+  description String?  @db.Text
+  timeLimit   Int      // minutes
+  maxScore    Int      @default(100)
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  questions   Question[]
+  results     TestResult[]
+
+  @@index([courseId])
+  @@map("tests")
+}
+
+model Question {
+  id            String @id @default(uuid())
+  text          String @db.Text
+  optionA       String
+  optionB       String
+  optionC       String
+  optionD       String
+  optionE       String
+  correctAnswer String // A, B, C, D, E
+  points        Int    @default(1)
+  order         Int
+
+  testId        String
+  test          Test   @relation(fields: [testId], references: [id], onDelete: Cascade)
+
+  @@index([testId])
+  @@map("questions")
+}
+
+model TestResult {
+  id          String   @id @default(uuid())
+  answers     Json     // { "questionId": "A", ... }
+  score       Int      @default(0)
+  percentage  Decimal  @default(0)
+  timeTaken   Int?     // seconds
+  completedAt DateTime @default(now())
+
+  testId      String
+  test        Test     @relation(fields: [testId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([testId, studentId])
+  @@index([testId])
+  @@index([studentId])
+  @@map("test_results")
+}
+
+model Enrollment {
+  id          String   @id @default(uuid())
+  progress    Decimal  @default(0)
+  isPaid      Boolean  @default(false)
+  amountPaid  Decimal? @default(0)
+  enrolledAt  DateTime @default(now())
+  completedAt DateTime?
+
+  courseId    String
+  course      Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User     @relation(fields: [studentId], references: [id], onDelete: Cascade)
+
+  @@unique([courseId, studentId])
+  @@index([courseId])
+  @@index([studentId])
+  @@map("enrollments")
+}
+
+model LiveClass {
+  id          String          @id @default(uuid())
+  title       String
+  description String?         @db.Text
+  scheduledAt DateTime
+  duration    Int             // minutes
+  meetingUrl  String          @default("")
+  status      LiveClassStatus @default(SCHEDULED)
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+
+  courseId    String
+  course      Course          @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  teacherId   String
+  teacher     TeacherProfile  @relation(fields: [teacherId], references: [id])
+
+  chatMessages ChatMessage[]
+
+  @@index([courseId])
+  @@index([teacherId])
+  @@index([status])
+  @@map("live_classes")
+}
+
+model ChatMessage {
+  id        String    @id @default(uuid())
+  content   String    @db.Text
+  type      String    @default("text") // text, emoji, file
+  fileUrl   String?
+  createdAt DateTime  @default(now())
+
+  liveClassId String
+  liveClass   LiveClass @relation(fields: [liveClassId], references: [id], onDelete: Cascade)
+  userId      String
+  user        User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([liveClassId])
+  @@index([userId])
+  @@index([createdAt])
+  @@map("chat_messages")
+}
+
+model Group {
+  id          String   @id @default(uuid())
+  name        String
+  description String?  @db.Text
+  avatar      String?
+  isPublic    Boolean  @default(true)
+  courseId    String?
+  courseName  String?
+  createdAt   DateTime @default(now())
+  updatedAt   DateTime @updatedAt
+
+  members     GroupMember[]
+  posts       GroupPost[]
+
+  @@map("groups")
+}
+
+model GroupMember {
+  id        String   @id @default(uuid())
+  role      String   @default("member") // admin, member
+  joinedAt  DateTime @default(now())
+
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@unique([groupId, userId])
+  @@index([groupId])
+  @@index([userId])
+  @@map("group_members")
+}
+
+model GroupPost {
+  id        String   @id @default(uuid())
+  content   String   @db.Text
+  imageUrl  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  groupId   String
+  group     Group    @relation(fields: [groupId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User     @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  comments  PostComment[]
+
+  @@index([groupId])
+  @@index([authorId])
+  @@map("group_posts")
+}
+
+model PostComment {
+  id        String   @id @default(uuid())
+  content   String   @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  postId    String
+  post      GroupPost @relation(fields: [postId], references: [id], onDelete: Cascade)
+  authorId  String
+  author    User      @relation(fields: [authorId], references: [id], onDelete: Cascade)
+
+  @@index([postId])
+  @@index([authorId])
+  @@map("post_comments")
+}
+
+model Review {
+  id        String   @id @default(uuid())
+  rating    Int
+  comment   String?  @db.Text
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  courseId  String
+  course    Course   @relation(fields: [courseId], references: [id], onDelete: Cascade)
+  studentId String
+
+  @@unique([courseId, studentId])
+  @@index([courseId])
+  @@map("reviews")
+}
+
+model Payment {
+  id            String        @id @default(uuid())
+  reference     String        @unique
+  amount        Decimal
+  status        PaymentStatus @default(PENDING)
+  paystackData  Json?
+  metadata      Json?
+  paidAt        DateTime?
+  createdAt     DateTime      @default(now())
+  updatedAt     DateTime      @updatedAt
+
+  @@index([reference])
+  @@index([status])
+  @@map("payments")
+}
+
+model TeacherEarning {
+  id        String   @id @default(uuid())
+  amount    Decimal
+  period    String   // YYYY-MM
+  createdAt DateTime @default(now())
+
+  teacherId String
+  teacher   TeacherProfile @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  courseId  String
+  course    Course         @relation(fields: [courseId], references: [id], onDelete: Cascade)
+
+  @@index([teacherId])
+  @@index([courseId])
+  @@map("teacher_earnings")
+}
+
+model Notification {
+  id        String   @id @default(uuid())
+  title     String
+  body      String   @db.Text
+  type      String   // assignment, test, live_class, payment, approval, announcement
+  isRead    Boolean  @default(false)
+  data      Json?
+  createdAt DateTime @default(now())
+
+  userId    String
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([isRead])
+  @@map("notifications")
+}
+
+model Announcement {
+  id          String             @id @default(uuid())
+  title       String
+  body        String             @db.Text
+  target      AnnouncementTarget @default(ALL)
+  isBroadcast Boolean            @default(false)
+  createdAt   DateTime           @default(now())
+  updatedAt   DateTime           @updatedAt
+
+  createdById String
+  createdBy   User               @relation("AnnouncementCreator", fields: [createdById], references: [id])
+
+  reads       UserAnnouncement[]
+
+  @@index([target])
+  @@map("announcements")
+}
+
+model UserAnnouncement {
+  id        String   @id @default(uuid())
+  readAt    DateTime @default(now())
+
+  userId          String
+  user            User         @relation(fields: [userId], references: [id], onDelete: Cascade)
+  announcementId  String
+  announcement    Announcement @relation(fields: [announcementId], references: [id], onDelete: Cascade)
+
+  @@unique([userId, announcementId])
+  @@map("user_announcements")
+}
+
+model AdminAction {
+  id        String   @id @default(uuid())
+  action    String   // approve_teacher, reject_teacher, suspend_user, delete_course, etc.
+  details   Json?
+  createdAt DateTime @default(now())
+
+  adminId   String
+  admin     User     @relation(fields: [adminId], references: [id], onDelete: Cascade)
+  targetId  String?  // affected user/course ID
+
+  @@index([adminId])
+  @@map("admin_actions")
+}
