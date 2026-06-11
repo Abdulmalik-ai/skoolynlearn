@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # Skoolyn L.E.A.R.N
 
 A production-ready fullstack Learning Management System (LMS) built with **Next.js 14 (App Router)**, **React**, **TypeScript**, **Tailwind CSS**, **shadcn/ui**, **Prisma ORM**, **PostgreSQL**, **Socket.io**, and **Paystack API**.
@@ -300,3 +301,7 @@ MIT License - Skoolyn L.E.A.R.N Team
 ---
 
 Built with passion for education in Nigeria and beyond.
+=======
+# skoolynlearn
+L.E.R.N
+>>>>>>> 69fc4cf27033114bb310ac1fb7dbc5ace9b64285
